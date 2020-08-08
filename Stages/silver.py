@@ -95,12 +95,12 @@ df_beer_flattened_cleaned = df_beer_flattened.withColumn('active_bool',when(df_b
 
 # COMMAND ----------
 
-df_beer_flattened_checkin = df_beer_flattened_cleaned.join(spark.table('facts').select('checkin_id', 'beer_bid'), 'beer_bid')
-df_beer_checkin = spark.table('facts').select('checkin_id', 'beer_bid').join(spark.table('beer'),'beer_bid')
+# df_beer_flattened_checkin = df_beer_flattened_cleaned.join(spark.table('facts').select('checkin_id', 'beer_bid'), 'beer_bid')
+# df_beer_checkin = spark.table('facts').select('checkin_id', 'beer_bid').join(spark.table('beer'),'beer_bid')
 
 # COMMAND ----------
 
-df_beer_upsert = df_beer_flattened_checkin.join(df_beer_checkin, 'checkin_id', 'left_anti')
+df_beer_upsert = df_beer_flattened_cleaned.join(spark.table('beer'), 'beer_bid', 'left_anti')
 create_register_delta_table(df = df_beer_upsert, name = 'beer', path = untappd_base_query_path+'beer')
 
 # COMMAND ----------
