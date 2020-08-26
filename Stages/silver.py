@@ -1,11 +1,8 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # TODO 
-# MAGIC #### fix dupes
-# MAGIC #### adress 'ignoreChanges'
-# MAGIC #### string object not callable for toast/comments
-# MAGIC #### add a primary key to source
-# MAGIC #### fact table for venues
+# MAGIC #### string object not callable for toast/comments/venues
+# MAGIC #### add comments logic back
 
 # COMMAND ----------
 
@@ -22,7 +19,12 @@
 
 # COMMAND ----------
 
-from pyspark.sql.functions import col, explode, when
+# MAGIC %sql
+# MAGIC SET spark.sql.legacy.timeParserPolicy = LEGACY
+
+# COMMAND ----------
+
+from pyspark.sql.functions import col, explode, when, split, to_timestamp
 
 # COMMAND ----------
 
@@ -31,7 +33,14 @@ print(untappd_base_query_path)
 
 # COMMAND ----------
 
-df = spark.readStream.format('delta').load(untappd_raw_delta_path)
+df_raw = spark.readStream.format('delta').option('ignoreChanges', True).load(untappd_raw_delta_path)
+
+# COMMAND ----------
+
+df_date_fix = df_raw.withColumn('created_at', split(df_raw.created_at,',')[1])
+df_date_fix = df_date_fix.withColumn('created_at', split(df_date_fix.created_at,' \\+')[0])
+df_date_fix = df_date_fix.withColumn('created_at', to_timestamp(df_date_fix.created_at, 'dd MMM yyyy HH:mm:ss'))
+df = df_date_fix.dropDuplicates(['checkin_id','created_at']).withWatermark('created_at', '24 hours')
 
 # COMMAND ----------
 
@@ -43,6 +52,14 @@ df = spark.readStream.format('delta').load(untappd_raw_delta_path)
 from pyspark.sql.functions import col, json_tuple, from_json, schema_of_json
 schema = schema_of_json('''{"venue_id":9917985,"venue_name":"Untappd at Home","venue_slug":"untappd-at-home","primary_category_key":"Residence","primary_category":"Residence","parent_category_id":"4e67e38e036454776db1fb3a","categories":{"count":1,"items":[{"category_key":"home_private","category_name":"Home (private)","category_id":"4bf58dd8d48988d103941735","is_primary":true}]},"location":{"venue_address":"","venue_city":"","venue_state":"Everywhere","venue_country":"United States","lat":34.2347,"lng":-77.9482},"contact":{"twitter":"","venue_url":""},"foursquare":{"foursquare_id":"5e7b4d99c91df60008e8b168","foursquare_url":"https://4sq.com/3bDWYuq"},"venue_icon":{"sm":"https://untappd.akamaized.net/venuelogos/venue_9917985_b3a5d245_bg_64.png","md":"https://untappd.akamaized.net/venuelogos/venue_9917985_b3a5d245_bg_88.png","lg":"https://untappd.akamaized.net/venuelogos/venue_9917985_b3a5d245_bg_176.png?v=1"},"is_verified":true}''')
 df = df.withColumn("venue", from_json(df.venue, schema))
+
+# COMMAND ----------
+
+write_delta_table(df = df, name = 'untappd')
+
+# COMMAND ----------
+
+register_delta_table(name = 'untappd')
 
 # COMMAND ----------
 
@@ -61,11 +78,7 @@ df_badges_flat = df_badges.select(df_badges.checkin_id, df_badges.badge_count,df
 
 # COMMAND ----------
 
-df_badges_upsert = df_badges_flat.join(spark.table('badges'), 'checkin_id', 'left_anti')
-
-# COMMAND ----------
-
-df_badges_upsert.writeStream.format('delta').option('path', untappd_base_query_path+'/badges').option('checkpointLocation', untappd_base_query_path+'/checkpoints').option('ignoreChanges', True).outputMode("append").trigger(once=True).start()
+df_badges_flat.writeStream.format('delta').option('path', untappd_base_query_path+'/badges').option('checkpointLocation', untappd_base_query_path+'badges/checkpoints').outputMode("append").trigger(once=True).start()
 
 # COMMAND ----------
 
@@ -76,11 +89,6 @@ USING DELTA
 LOCATION '{}'
 '''.format(untappd_base_query_path+'/badges')
 )
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC DESCRIBE DETAIL badges
 
 # COMMAND ----------
 
@@ -95,13 +103,11 @@ df_beer_flattened_cleaned = df_beer_flattened.withColumn('active_bool',when(df_b
 
 # COMMAND ----------
 
-# df_beer_flattened_checkin = df_beer_flattened_cleaned.join(spark.table('facts').select('checkin_id', 'beer_bid'), 'beer_bid')
-# df_beer_checkin = spark.table('facts').select('checkin_id', 'beer_bid').join(spark.table('beer'),'beer_bid')
+write_delta_table(df = df_beer_flattened_cleaned, name = 'beer')
 
 # COMMAND ----------
 
-df_beer_upsert = df_beer_flattened_cleaned.join(spark.table('beer'), 'beer_bid', 'left_anti')
-create_register_delta_table(df = df_beer_upsert, name = 'beer', path = untappd_base_query_path+'beer')
+register_delta_table(name = 'beer')
 
 # COMMAND ----------
 
@@ -123,8 +129,11 @@ for col in df_brewery_flattened.columns:
 
 # COMMAND ----------
 
-df_brewery_flattened_upsert = df_brewery_flattened.join(spark.table('brewery'), 'id', 'left_anti')
-create_register_delta_table(df_brewery_flattened_upsert, 'brewery', untappd_base_query_path+'brewery', True)
+write_delta_table(df_brewery_flattened, 'brewery')
+
+# COMMAND ----------
+
+register_delta_table('brewery')
 
 # COMMAND ----------
 
@@ -163,7 +172,7 @@ create_register_delta_table(df_brewery_flattened_upsert, 'brewery', untappd_base
 # COMMAND ----------
 
 # df_comments_upsert = df_comments_flattened.join(spark.table('comments'), 'comment_id', 'left_anti')
-# create_register_delta_table(df_comments_upsert, 'comments', untappd_base_query_path+'comments', True)
+# write_delta_table(df_comments_upsert, 'comments', untappd_base_query_path+'comments', True)
 
 # COMMAND ----------
 
@@ -179,8 +188,11 @@ df_media_flattened = df_media.select(df_media.photo_count, df_media.photos.photo
 
 # COMMAND ----------
 
-df_media_flattened_upsert = df_media_flattened.join(spark.table('media'), 'id', 'left_anti')
-create_register_delta_table(df_media_flattened_upsert, 'media', untappd_base_query_path+'media', True)
+write_delta_table(df_media_flattened, 'media')
+
+# COMMAND ----------
+
+register_delta_table( 'media')
 
 # COMMAND ----------
 
@@ -190,13 +202,16 @@ create_register_delta_table(df_media_flattened_upsert, 'media', untappd_base_que
 # COMMAND ----------
 
 from pyspark.sql.functions import explode, when
-df_source = df.select(df.source)
-df_source_flattened = df_source.select(df_source.source.app_name.alias('app_name'), df_source.source.app_website.alias('app_website'))
+df_source = df.select(df.source, df.checkin_id)
+df_source_flattened = df_source.select(df_source.source.app_name.alias('app_name'), df_source.source.app_website.alias('app_website'), df.checkin_id)
 
 # COMMAND ----------
 
-df_source_flattened_upsert = df_source_flattened.join(spark.table('source'),'app_name','left_anti')
-create_register_delta_table(df_source_flattened_upsert, 'source', untappd_base_query_path+'source', True)
+write_delta_table(df_source_flattened, 'source')
+
+# COMMAND ----------
+
+register_delta_table( 'source')
 
 # COMMAND ----------
 
@@ -211,8 +226,11 @@ create_register_delta_table(df_source_flattened_upsert, 'source', untappd_base_q
 # COMMAND ----------
 
 df_beer_facts = df.select(df.beer.bid, df.checkin_id).withColumnRenamed('beer.bid','beer_bid')
-df_beer_facts_clean_upsert = df_beer_facts.join(spark.table('fact_beer'), 'checkin_id', 'left_anti')
-create_register_delta_table(df_beer_facts_clean_upsert,'fact_beer', untappd_base_query_path+'fact_beer', True)
+write_delta_table(df_beer_facts,'fact_beer')
+
+# COMMAND ----------
+
+register_delta_table('fact_beer')
 
 # COMMAND ----------
 
@@ -222,8 +240,11 @@ create_register_delta_table(df_beer_facts_clean_upsert,'fact_beer', untappd_base
 # COMMAND ----------
 
 df_brewery_facts = df.select(df.brewery.brewery_id, df.checkin_id).withColumnRenamed('brewery.brewery_id','brewery_bid')
-df_brewery_facts_clean_upsert = df_brewery_facts.join(spark.table('fact_brewery'), 'checkin_id', 'left_anti')
-create_register_delta_table(df_brewery_facts_clean_upsert,'fact_brewery', untappd_base_query_path+'fact_brewery', True)
+write_delta_table(df_brewery_facts,'fact_brewery')
+
+# COMMAND ----------
+
+register_delta_table('fact_brewery')
 
 # COMMAND ----------
 
@@ -237,8 +258,11 @@ df_comments_facts_clean = df_comments_facts.select(df_comments_facts.checkin_id,
 
 # COMMAND ----------
 
-df_comments_facts_clean_upsert = df_comments_facts_clean.join(spark.table('fact_comments'), 'checkin_id', 'left_anti')
-create_register_delta_table(df_comments_facts_clean_upsert,'fact_comments', untappd_base_query_path+'fact_comments', True)
+write_delta_table(df_comments_facts_clean,'fact_comments')
+
+# COMMAND ----------
+
+register_delta_table('fact_comments')
 
 # COMMAND ----------
 
@@ -248,8 +272,11 @@ df_media_facts_clean = df_media_facts.select(df_media_facts.checkin_id, df_media
 
 # COMMAND ----------
 
-df_media_facts_clean_upsert = df_media_facts_clean.join(spark.table('fact_media'), 'checkin_id', 'left_anti')
-create_register_delta_table(df_media_facts_clean_upsert,'fact_media', untappd_base_query_path+'fact_media', True)
+write_delta_table(df_media_facts_clean,'fact_media')
+
+# COMMAND ----------
+
+register_delta_table('fact_media')
 
 # COMMAND ----------
 
@@ -263,8 +290,11 @@ df_toasts_facts_clean = df_toasts_facts.select(df_toasts_facts.checkin_id, df_to
 
 # COMMAND ----------
 
-df_toasts_facts_clean_upsert = df_toasts_facts_clean.join(spark.table('fact_comments'), 'checkin_id', 'left_anti')
-create_register_delta_table(df_toasts_facts_clean_upsert,'fact_toasts', untappd_base_query_path+'fact_toasts', True)
+write_delta_table(df_toasts_facts_clean,'fact_toasts')
+
+# COMMAND ----------
+
+register_delta_table('fact_toasts')
 
 # COMMAND ----------
 
@@ -278,8 +308,11 @@ df_badges_facts_flat = df_badges_facts.select(df_badges_facts.checkin_id,df_badg
 
 # COMMAND ----------
 
-df_badges_facts_flat_upsert = df_badges_facts_flat.join(spark.table('fact_badges'), 'checkin_id', 'left_anti')
-create_register_delta_table(df_badges_facts_flat_upsert,'fact_badges', untappd_base_query_path+'fact_badges', True)
+write_delta_table(df_badges_facts_flat,'fact_badges')
+
+# COMMAND ----------
+
+register_delta_table('fact_badges')
 
 # COMMAND ----------
 
@@ -293,12 +326,11 @@ df_facts = df.select(df.checkin_comment,df.checkin_id,df.created_at,df.rating_sc
 # COMMAND ----------
 
 # df_facts_upsert = df_facts.join(spark.table('facts'), 'checkin_id', 'left_anti')
-create_register_delta_table(df_facts,'facts', untappd_base_query_path+'facts', register=True)
+write_delta_table(df_facts,'facts')
 
 # COMMAND ----------
 
-df_facts_upsert = df_facts.join(spark.table('facts'), 'checkin_id', 'left_anti')
-create_register_delta_table(df_facts_upsert,'facts', untappd_base_query_path+'facts', True)
+register_delta_table('facts')
 
 # COMMAND ----------
 
@@ -319,7 +351,7 @@ create_register_delta_table(df_facts_upsert,'facts', untappd_base_query_path+'fa
 # COMMAND ----------
 
 # df_user_flat_dedupe_upsert = df_user_flat_dedupe.join(spark.table('user'), 'uid', 'left_anti')
-# create_register_delta_table(df_user_flat,'user', untappd_base_query_path+'user', True)
+# write_delta_table(df_user_flat,'user', untappd_base_query_path+'user', True)
 
 # COMMAND ----------
 
@@ -339,8 +371,11 @@ create_register_delta_table(df_facts_upsert,'facts', untappd_base_query_path+'fa
 
 # COMMAND ----------
 
-# df_toasts_flat_clean_upsert = df_toasts_flat_clean.join(spark.table('toasts'), 'like_id', 'left_anti')
-# create_register_delta_table(df_toasts_flat_clean_upsert,'toasts', untappd_base_query_path+'toasts', True)
+# write_delta_table(df_toasts_flat_clean,'toasts')
+
+# COMMAND ----------
+
+# register_delta_table('toasts')
 
 # COMMAND ----------
 
@@ -349,21 +384,41 @@ create_register_delta_table(df_facts_upsert,'facts', untappd_base_query_path+'fa
 
 # COMMAND ----------
 
-df_venue_flat = flatten_df(df.select(df.venue))
-for col in df_venue_flat.columns:
-  splits = col.split('venue_')
-  name = splits[len(splits) - 1]
-  df_venue_flat = df_venue_flat.withColumnRenamed(col,name)
+# df_venue_flat = flatten_df(df.select(df.venue))
+# for col in df_venue_flat.columns:
+#   splits = col.split('venue_')
+#   name = splits[len(splits) - 1]
+#   df_venue_flat = df_venue_flat.withColumnRenamed(col,name)
 
 # COMMAND ----------
 
-df_venue_flat_exploded = df_venue_flat.withColumn('categories_items', explode(df_venue_flat.categories_items))
-df_venue_flat_exploded = df_venue_flat_exploded.withColumn('category_id', df_venue_flat_exploded.categories_items.category_id).withColumn('category_key', df_venue_flat_exploded.categories_items.category_key).withColumn('category_name', df_venue_flat_exploded.categories_items.category_name).withColumn('is_primary', df_venue_flat_exploded.categories_items.is_primary).drop(df_venue_flat_exploded.categories_items).withColumnRenamed('id', 'venue_id')
+# df_venue_flat_exploded = df_venue_flat.withColumn('categories_items', explode(df_venue_flat.categories_items))
+# df_venue_flat_exploded = df_venue_flat_exploded.withColumn('category_id', df_venue_flat_exploded.categories_items.category_id).withColumn('category_key', df_venue_flat_exploded.categories_items.category_key).withColumn('category_name', df_venue_flat_exploded.categories_items.category_name).withColumn('is_primary', df_venue_flat_exploded.categories_items.is_primary).drop(df_venue_flat_exploded.categories_items).withColumnRenamed('id', 'venue_id')
 
 # COMMAND ----------
 
-df_venues_flat_clean_upsert = df_venue_flat_exploded.join(spark.table('venues'), 'venue_id', 'left_anti')
-create_register_delta_table(df_venues_flat_clean_upsert,'venues', untappd_base_query_path+'venues', register=True)
+# write_delta_table(df_venue_flat_exploded,'venues')
+
+# COMMAND ----------
+
+# register_delta_table('venues')
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Venue Fact
+
+# COMMAND ----------
+
+# df_venue_facts = df.select(df.checkin_id, df.venue.venue_id)
+
+# COMMAND ----------
+
+# write_delta_table(df_venue_facts,'fact_venue')
+
+# COMMAND ----------
+
+# register_delta_table('fact_venue')
 
 # COMMAND ----------
 
