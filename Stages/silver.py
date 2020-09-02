@@ -34,9 +34,6 @@ print(untappd_base_query_path)
 # COMMAND ----------
 
 df_raw = spark.readStream.format('delta').option('ignoreChanges', True).load(untappd_raw_delta_path)
-
-# COMMAND ----------
-
 df_date_fix = df_raw.withColumn('created_at', split(df_raw.created_at,',')[1])
 df_date_fix = df_date_fix.withColumn('created_at', split(df_date_fix.created_at,' \\+')[0])
 df_date_fix = df_date_fix.withColumn('created_at', to_timestamp(df_date_fix.created_at, 'dd MMM yyyy HH:mm:ss'))
@@ -60,6 +57,46 @@ write_delta_table(df = df, name = 'untappd')
 # COMMAND ----------
 
 register_delta_table(name = 'untappd')
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Toasts
+
+# COMMAND ----------
+
+df_toasts = df.select(df.toasts.count.alias('toasts_count'), explode(df.toasts.items).alias('items'), df.toasts.auth_toast.alias('auth_toast'), df.toasts.total_count.alias('total_count'))
+
+# COMMAND ----------
+
+df_toasts = df.select(df.toasts.count.alias('toasts_count'), explode(df.toasts.items).alias('items'), df.toasts.auth_toast.alias('auth_toast'), df.toasts.total_count.alias('total_count'))
+df_toasts_flat = flatten_df(df_toasts)
+df_toasts_flat_clean = clean_flat_column_names(df_toasts_flat,'items')
+
+# COMMAND ----------
+
+write_delta_table(df_toasts_facts_clean,'fact_toasts')
+
+# COMMAND ----------
+
+register_delta_table('fact_toasts')
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Venue
+
+# COMMAND ----------
+
+df_venue_flat = flatten_df(df.select(df.venue))
+for col in df_venue_flat.columns:
+  splits = col.split('venue_')
+  name = splits[len(splits) - 1]
+  df_venue_flat = df_venue_flat.withColumnRenamed(col,name)
+df_venue_flat_exploded = df_venue_flat.withColumn('categories_items', explode(df_venue_flat.categories_items))
+df_venue_flat_exploded = df_venue_flat_exploded.withColumn('category_id', df_venue_flat_exploded.categories_items.category_id).withColumn('category_key', df_venue_flat_exploded.categories_items.category_key).withColumn('category_name', df_venue_flat_exploded.categories_items.category_name).withColumn('is_primary', df_venue_flat_exploded.categories_items.is_primary).drop(df_venue_flat_exploded.categories_items).withColumnRenamed('id', 'venue_id')
+write_delta_table(df_venue_flat_exploded,'venues')
+register_delta_table('venues')
 
 # COMMAND ----------
 
@@ -356,69 +393,19 @@ register_delta_table('facts')
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### Toasts
-
-# COMMAND ----------
-
-# df_toasts = df.select(df.toasts.count.alias('toasts_count'), explode(df.toasts.items).alias('items'), df.toasts.auth_toast.alias('auth_toast'), df.toasts.total_count.alias('total_count'))
-
-
-# COMMAND ----------
-
-# df_toasts = df.select(df.toasts.count.alias('toasts_count'), explode(df.toasts.items).alias('items'), df.toasts.auth_toast.alias('auth_toast'), df.toasts.total_count.alias('total_count'))
-# df_toasts_flat = flatten_df(df_toasts)
-# df_toasts_flat_clean = clean_flat_column_names(df_toasts_flat,'items')
-
-# COMMAND ----------
-
-# write_delta_table(df_toasts_flat_clean,'toasts')
-
-# COMMAND ----------
-
-# register_delta_table('toasts')
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Venue
-
-# COMMAND ----------
-
-# df_venue_flat = flatten_df(df.select(df.venue))
-# for col in df_venue_flat.columns:
-#   splits = col.split('venue_')
-#   name = splits[len(splits) - 1]
-#   df_venue_flat = df_venue_flat.withColumnRenamed(col,name)
-
-# COMMAND ----------
-
-# df_venue_flat_exploded = df_venue_flat.withColumn('categories_items', explode(df_venue_flat.categories_items))
-# df_venue_flat_exploded = df_venue_flat_exploded.withColumn('category_id', df_venue_flat_exploded.categories_items.category_id).withColumn('category_key', df_venue_flat_exploded.categories_items.category_key).withColumn('category_name', df_venue_flat_exploded.categories_items.category_name).withColumn('is_primary', df_venue_flat_exploded.categories_items.is_primary).drop(df_venue_flat_exploded.categories_items).withColumnRenamed('id', 'venue_id')
-
-# COMMAND ----------
-
-# write_delta_table(df_venue_flat_exploded,'venues')
-
-# COMMAND ----------
-
-# register_delta_table('venues')
-
-# COMMAND ----------
-
-# MAGIC %md
 # MAGIC ### Venue Fact
 
 # COMMAND ----------
 
-# df_venue_facts = df.select(df.checkin_id, df.venue.venue_id)
+df_venue_facts = df.select(df.checkin_id, df.venue.venue_id)
 
 # COMMAND ----------
 
-# write_delta_table(df_venue_facts,'fact_venue')
+write_delta_table(df_venue_facts,'fact_venue')
 
 # COMMAND ----------
 
-# register_delta_table('fact_venue')
+register_delta_table('fact_venue')
 
 # COMMAND ----------
 
