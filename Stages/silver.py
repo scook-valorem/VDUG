@@ -1,8 +1,7 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # TODO 
-# MAGIC #### string object not callable for toast/comments/venues
-# MAGIC #### add comments logic back
+# MAGIC #### ensure beer table is deduped
 
 # COMMAND ----------
 
@@ -75,11 +74,11 @@ df_toasts_flat_clean = clean_flat_column_names(df_toasts_flat,'items')
 
 # COMMAND ----------
 
-write_delta_table(df_toasts_facts_clean,'fact_toasts')
+write_delta_table(df_toasts_flat_clean,'toasts')
 
 # COMMAND ----------
 
-register_delta_table('fact_toasts')
+register_delta_table('toasts')
 
 # COMMAND ----------
 
@@ -89,10 +88,10 @@ register_delta_table('fact_toasts')
 # COMMAND ----------
 
 df_venue_flat = flatten_df(df.select(df.venue))
-for col in df_venue_flat.columns:
-  splits = col.split('venue_')
+for col_name in df_venue_flat.columns:
+  splits = col_name.split('venue_')
   name = splits[len(splits) - 1]
-  df_venue_flat = df_venue_flat.withColumnRenamed(col,name)
+  df_venue_flat = df_venue_flat.withColumnRenamed(col_name,name)
 df_venue_flat_exploded = df_venue_flat.withColumn('categories_items', explode(df_venue_flat.categories_items))
 df_venue_flat_exploded = df_venue_flat_exploded.withColumn('category_id', df_venue_flat_exploded.categories_items.category_id).withColumn('category_key', df_venue_flat_exploded.categories_items.category_key).withColumn('category_name', df_venue_flat_exploded.categories_items.category_name).withColumn('is_primary', df_venue_flat_exploded.categories_items.is_primary).drop(df_venue_flat_exploded.categories_items).withColumnRenamed('id', 'venue_id')
 write_delta_table(df_venue_flat_exploded,'venues')
@@ -158,10 +157,10 @@ df_brewery_flattened = flatten_df(df.select(df.brewery))
 
 # COMMAND ----------
 
-for col in df_brewery_flattened.columns:
-  splits = col.split('brewery_')
+for col_name in df_brewery_flattened.columns:
+  splits = col_name.split('brewery_')
   name = splits[len(splits) - 1]
-  df_brewery_flattened = df_brewery_flattened.withColumnRenamed(col,name)
+  df_brewery_flattened = df_brewery_flattened.withColumnRenamed(col_name,name)
 
 
 # COMMAND ----------
@@ -179,32 +178,32 @@ register_delta_table('brewery')
 
 # COMMAND ----------
 
-# from pyspark.sql.functions import explode, when
-# df_comments = df.select(df.comments.count.alias('comments_count'), explode(df.comments.items), df.comments.total_count.alias('total_count'))
-# df_comments_flattened = flatten_df(df_comments)
+from pyspark.sql.functions import explode, when
+df_comments = df.select(df.comments.count.alias('comments_count'), explode(df.comments.items), df.comments.total_count.alias('total_count'))
+df_comments_flattened = flatten_df(df_comments)
 
 # COMMAND ----------
 
-# for col in df_comments_flattened.columns:
-#   splits = col.split('col_')
-#   name = splits[len(splits) - 1]
-#   df_comments_flattened = df_comments_flattened.withColumnRenamed(col,name)
-# df_comments_flattened = df_comments_flattened.withColumn('user_brewery_details_tmp', explode('user_brewery_details'))
-# df_comments_flattened = df_comments_flattened.withColumn('user_venue_details_tmp', explode('user_venue_details'))
-# df_comments_flattened = df_comments_flattened.drop('user_venue_details', 'user_brewery_details')
-# df_comments_flattened = df_comments_flattened.withColumnRenamed('user_venue_details_tmp','user_venue_details').withColumnRenamed('user_brewery_details_tmp','user_brewery_details')
+for col in df_comments_flattened.columns:
+  splits = col.split('col_')
+  name = splits[len(splits) - 1]
+  df_comments_flattened = df_comments_flattened.withColumnRenamed(col,name)
+df_comments_flattened = df_comments_flattened.withColumn('user_brewery_details_tmp', explode('user_brewery_details'))
+df_comments_flattened = df_comments_flattened.withColumn('user_venue_details_tmp', explode('user_venue_details'))
+df_comments_flattened = df_comments_flattened.drop('user_venue_details', 'user_brewery_details')
+df_comments_flattened = df_comments_flattened.withColumnRenamed('user_venue_details_tmp','user_venue_details').withColumnRenamed('user_brewery_details_tmp','user_brewery_details')
 
 
 # COMMAND ----------
 
-# df_comments_flattened.writeStream.format('delta').option('path',  untappd_base_query_path+'comments').option('checkpointLocation', untappd_base_query_path+'/checkpoints').trigger(once=True).start()
+df_comments_flattened.writeStream.format('delta').option('path',  untappd_base_query_path+'comments').option('checkpointLocation', untappd_base_query_path+'/checkpoints').trigger(once=True).start()
 
 # COMMAND ----------
 
-# %sql
-#   CREATE TABLE IF NOT EXISTS comments
-#   USING DELTA
-#   LOCATION 'dbfs:/mnt/default/query/comments'
+# MAGIC %sql
+# MAGIC   CREATE TABLE IF NOT EXISTS comments
+# MAGIC   USING DELTA
+# MAGIC   LOCATION 'dbfs:/mnt/default/query/comments'
 
 # COMMAND ----------
 
