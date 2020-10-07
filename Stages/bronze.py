@@ -1,7 +1,7 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC ### add resiliency for API calls and raw data 
-# MAGIC #### add enforced schema
+# MAGIC ### add a schema inference catch in case the schema file is lost
 
 # COMMAND ----------
 
@@ -13,6 +13,7 @@
 import requests
 import json
 import datetime
+from pyspark.sql.types import StructType
 
 # COMMAND ----------
 
@@ -28,11 +29,15 @@ import datetime
 dbutils.widgets.text("username","", label="username for untappd API")
 username = dbutils.widgets.get("username")
 untappd_raw_path = base_path+'raw/untappd/{}/{}/{}/untappd.json'.format(date.year,date.month,date.day)
+untappd_raw_delta_path = base_path+'raw/untappd/delta'
 untappd_query_path =base_path+'query/untappd'
+untappd_raw_schema_path = base_path + 'raw/untappd/schema'
 
 # COMMAND ----------
 
 print(untappd_raw_path)
+print(username)
+print(untappd_token)
 
 # COMMAND ----------
 
@@ -40,6 +45,10 @@ user = requests.get("https://api.untappd.com/v4/user/info/"+username+"?access_to
 user_data = user.json()
 total_checkins = user_data["response"]["user"]["stats"]["total_checkins"]
 print("Total Checkins = " + str(total_checkins))
+
+# COMMAND ----------
+
+print(user_data)
 
 # COMMAND ----------
 
@@ -56,20 +65,45 @@ while (len(full_data) < total_checkins):
     print("Downloading " + next_url)
     checkins = requests.get(next_url)
     checkins_data = checkins.json()
-
-    full_data.extend(checkins_data["response"]["checkins"]["items"])
-for data in full_data:
-    full_data_json.append({})
-    for key in data.keys():
-        if(type(data[key]) is dict):
-            full_data_json[i][key] = json.dumps(data[key])
-        else:
-            full_data_json[i][key] = data[key]
-    i = i+1
-
-# COMMAND ----------
-
-dbutils.fs.put(untappd_raw_path, json.dumps(full_data))
+    try:
+      full_data.extend(checkins_data["response"]["checkins"]["items"])
+    except TypeError:
+      break
+# for data in full_data:
+#     full_data_json.append({})
+#     for key in data.keys():
+#         if(type(data[key]) is dict):
+#             full_data_json[i][key] = json.dumps(data[key])
+#         else:
+#             full_data_json[i][key] = data[key]
+#     i = i+1
 
 # COMMAND ----------
 
+dbutils.fs.help()
+
+# COMMAND ----------
+
+dbutils.fs.put(untappd_raw_path, json.dumps(full_data), True)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Ingest our schema file from the Data Lake
+
+# COMMAND ----------
+
+df_delta = spark.read.format('delta').load(untappd_raw_delta_path)
+schema = df_delta.schema
+
+# COMMAND ----------
+
+df = spark.read.schema(schema).json(untappd_raw_path)
+
+# COMMAND ----------
+
+df.show()
+
+# COMMAND ----------
+
+df.write.format('delta').mode("append").save(untappd_raw_delta_path)
