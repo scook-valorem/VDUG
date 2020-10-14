@@ -2,6 +2,7 @@
 # MAGIC %md
 # MAGIC ### add resiliency for API calls and raw data 
 # MAGIC ### add a schema inference catch in case the schema file is lost
+# MAGIC ### consider using an upsert to only add new data 
 
 # COMMAND ----------
 
@@ -93,8 +94,8 @@ dbutils.fs.put(untappd_raw_path, json.dumps(full_data), True)
 
 # COMMAND ----------
 
-df_delta = spark.read.format('delta').load(untappd_raw_delta_path)
-schema = df_delta.schema
+head = dbutils.fs.head(untappd_raw_schema_path, 10000)
+schema = StructType.fromJson(json.loads(head))
 
 # COMMAND ----------
 
