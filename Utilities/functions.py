@@ -30,16 +30,31 @@ def flatten_df(nested_df):
 # COMMAND ----------
 
 # add type hint for dataframe
-def write_delta_table(df, name: str ):
-  df.writeStream.format('delta').option('path',  '{}{}'.format(untappd_base_query_path,name)).option('checkpointLocation', untappd_base_query_path+'{}/checkpoints'.format(name)).outputMode("append").trigger(once=True).start()
-def register_delta_table(name: str):
-  spark.sql(
-  '''
-  CREATE TABLE IF NOT EXISTS {}
-  USING DELTA
-  LOCATION '{}'
-  '''.format(name, '{}{}'.format(untappd_base_query_path,name))
-  )
+def write_delta_table(df, name: str, zone = 'query'):
+  if zone == 'query':
+    df.writeStream.format('delta').option('path',  '{}{}'.format(untappd_base_query_path,name)).option('checkpointLocation', untappd_base_query_path+'{}/checkpoints'.format(name)).outputMode("complete").trigger(once=True).start()
+  elif zone == 'sanctioned':
+    # NOTE: All sanctioned zone processing is done in batch
+    df.writeStream.format('delta').option('path',  '{}{}'.format(untappd_base_sanctioned_path,name)).option('checkpointLocation', untappd_base_sanctioned_path+'{}/checkpoints'.format(name)).outputMode("overwrite")
+  else:
+    return "invalid zone option"
+def register_delta_table(name: str, zone = 'query'):
+  if zone == 'query':
+    spark.sql(
+    '''
+    CREATE TABLE IF NOT EXISTS {}
+    USING DELTA
+    LOCATION '{}'
+    '''.format(name, '{}{}'.format(untappd_base_query_path,name))
+    )
+  elif zone == 'sanctioned':
+    spark.sql(
+    '''
+    CREATE TABLE IF NOT EXISTS {}
+    USING DELTA
+    LOCATION '{}'
+    '''.format(name, '{}{}'.format(untappd_base_sanctioned_path,name))
+    )
 
 # COMMAND ----------
 
