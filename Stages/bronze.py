@@ -108,3 +108,7 @@ df.show()
 # COMMAND ----------
 
 df.write.format('delta').mode("append").save(untappd_raw_delta_path)
+
+# COMMAND ----------
+
+dbutils.notebook.exit("Success")
