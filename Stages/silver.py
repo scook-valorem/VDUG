@@ -1,20 +1,17 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # TODO 
+# MAGIC # TODO
+# MAGIC #### clean up flattening logic
 # MAGIC #### ensure beer table is deduped
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### import configuration
-
-# COMMAND ----------
-
-# MAGIC %run Utilities/parameters
+# MAGIC #### ensure watermark is working
 
 # COMMAND ----------
 
 # MAGIC %run Utilities/functions
+
+# COMMAND ----------
+
+# MAGIC %run Utilities/parameters
 
 # COMMAND ----------
 
@@ -55,7 +52,7 @@ write_delta_table(df = df, name = 'untappd')
 
 # COMMAND ----------
 
-register_delta_table(name = 'untappd')
+# register_delta_table(name = 'untappd')
 
 # COMMAND ----------
 
@@ -78,7 +75,7 @@ write_delta_table(df_toasts_flat_clean,'toasts')
 
 # COMMAND ----------
 
-register_delta_table('toasts')
+# register_delta_table('toasts')
 
 # COMMAND ----------
 
@@ -87,15 +84,18 @@ register_delta_table('toasts')
 
 # COMMAND ----------
 
-df_venue_flat = flatten_df(df.select(df.venue))
-for col_name in df_venue_flat.columns:
-  splits = col_name.split('venue_')
-  name = splits[len(splits) - 1]
-  df_venue_flat = df_venue_flat.withColumnRenamed(col_name,name)
-df_venue_flat_exploded = df_venue_flat.withColumn('categories_items', explode(df_venue_flat.categories_items))
-df_venue_flat_exploded = df_venue_flat_exploded.withColumn('category_id', df_venue_flat_exploded.categories_items.category_id).withColumn('category_key', df_venue_flat_exploded.categories_items.category_key).withColumn('category_name', df_venue_flat_exploded.categories_items.category_name).withColumn('is_primary', df_venue_flat_exploded.categories_items.is_primary).drop(df_venue_flat_exploded.categories_items).withColumnRenamed('id', 'venue_id')
-write_delta_table(df_venue_flat_exploded,'venues')
-register_delta_table('venues')
+# df_venue_flat = flatten_df(df.select(df.venue))
+# for col_name in df_venue_flat.columns:
+#   splits = col_name.split('venue_')
+#   name = splits[len(splits) - 1]
+#   df_venue_flat = df_venue_flat.withColumnRenamed(col_name,name)
+# df_venue_flat_exploded = df_venue_flat.withColumn('categories_items', explode(df_venue_flat.categories_items))
+# df_venue_flat_exploded = df_venue_flat_exploded.withColumn('category_id', df_venue_flat_exploded.categories_items.category_id).withColumn('category_key', df_venue_flat_exploded.categories_items.category_key).withColumn('category_name', df_venue_flat_exploded.categories_items.category_name).withColumn('is_primary', df_venue_flat_exploded.categories_items.is_primary).drop(df_venue_flat_exploded.categories_items).withColumnRenamed('id', 'venue_id')
+# # register_delta_table('venues')
+
+# COMMAND ----------
+
+# write_delta_table(df_venue_flat_exploded,'venues')
 
 # COMMAND ----------
 
@@ -114,17 +114,21 @@ df_badges_flat = df_badges.select(df_badges.checkin_id, df_badges.badge_count,df
 
 # COMMAND ----------
 
+# display(df_badges_flat)
+
+# COMMAND ----------
+
 df_badges_flat.writeStream.format('delta').option('path', untappd_base_query_path+'/badges').option('checkpointLocation', untappd_base_query_path+'badges/checkpoints').outputMode("append").trigger(once=True).start()
 
 # COMMAND ----------
 
-spark.sql(
-'''
-CREATE TABLE IF NOT EXISTS badges
-USING DELTA
-LOCATION '{}'
-'''.format(untappd_base_query_path+'/badges')
-)
+# spark.sql(
+# '''
+# CREATE TABLE IF NOT EXISTS badges
+# USING DELTA
+# LOCATION '{}'
+# '''.format(untappd_base_query_path+'/badges')
+# )
 
 # COMMAND ----------
 
@@ -143,7 +147,7 @@ write_delta_table(df = df_beer_flattened_cleaned, name = 'beer')
 
 # COMMAND ----------
 
-register_delta_table(name = 'beer')
+# register_delta_table(name = 'beer')
 
 # COMMAND ----------
 
@@ -169,7 +173,7 @@ write_delta_table(df_brewery_flattened, 'brewery')
 
 # COMMAND ----------
 
-register_delta_table('brewery')
+# register_delta_table('brewery')
 
 # COMMAND ----------
 
@@ -200,10 +204,10 @@ df_comments_flattened.writeStream.format('delta').option('path',  untappd_base_q
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC   CREATE TABLE IF NOT EXISTS comments
-# MAGIC   USING DELTA
-# MAGIC   LOCATION 'dbfs:/mnt/default/query/comments'
+# %sql
+#   CREATE TABLE IF NOT EXISTS comments
+#   USING DELTA
+#   LOCATION 'dbfs:/mnt/default/query/comments'
 
 # COMMAND ----------
 
@@ -228,7 +232,7 @@ write_delta_table(df_media_flattened, 'media')
 
 # COMMAND ----------
 
-register_delta_table( 'media')
+# register_delta_table( 'media')
 
 # COMMAND ----------
 
@@ -247,7 +251,7 @@ write_delta_table(df_source_flattened, 'source')
 
 # COMMAND ----------
 
-register_delta_table( 'source')
+# register_delta_table( 'source')
 
 # COMMAND ----------
 
@@ -266,7 +270,7 @@ write_delta_table(df_beer_facts,'fact_beer')
 
 # COMMAND ----------
 
-register_delta_table('fact_beer')
+# register_delta_table('fact_beer')
 
 # COMMAND ----------
 
@@ -280,7 +284,7 @@ write_delta_table(df_brewery_facts,'fact_brewery')
 
 # COMMAND ----------
 
-register_delta_table('fact_brewery')
+# register_delta_table('fact_brewery')
 
 # COMMAND ----------
 
@@ -298,7 +302,12 @@ write_delta_table(df_comments_facts_clean,'fact_comments')
 
 # COMMAND ----------
 
-register_delta_table('fact_comments')
+# register_delta_table('fact_comments')
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC #### Create Media Fact Table
 
 # COMMAND ----------
 
@@ -312,7 +321,7 @@ write_delta_table(df_media_facts_clean,'fact_media')
 
 # COMMAND ----------
 
-register_delta_table('fact_media')
+# register_delta_table('fact_media')
 
 # COMMAND ----------
 
@@ -330,7 +339,7 @@ write_delta_table(df_toasts_facts_clean,'fact_toasts')
 
 # COMMAND ----------
 
-register_delta_table('fact_toasts')
+# register_delta_table('fact_toasts')
 
 # COMMAND ----------
 
@@ -348,7 +357,7 @@ write_delta_table(df_badges_facts_flat,'fact_badges')
 
 # COMMAND ----------
 
-register_delta_table('fact_badges')
+# register_delta_table('fact_badges')
 
 # COMMAND ----------
 
@@ -366,7 +375,7 @@ write_delta_table(df_facts,'facts')
 
 # COMMAND ----------
 
-register_delta_table('facts')
+# register_delta_table('facts')
 
 # COMMAND ----------
 
@@ -404,7 +413,8 @@ write_delta_table(df_venue_facts,'fact_venue')
 
 # COMMAND ----------
 
-register_delta_table('fact_venue')
+# register_delta_table('fact_venue')
 
 # COMMAND ----------
 
+dbutils.notebook.exit("Success")
