@@ -1,6 +1,6 @@
 # Databricks notebook source
-md
-# TODO 
+# MAGIC %md
+# MAGIC # TODO 
 
 # COMMAND ----------
 
@@ -9,6 +9,10 @@ md
 # COMMAND ----------
 
 # MAGIC %run Utilities/functions
+
+# COMMAND ----------
+
+from pyspark.sql.functions import concat, avg
 
 # COMMAND ----------
 
@@ -22,10 +26,15 @@ df_badges = spark.read\
           .option('ignoreChanges', True)\
           .load(untappd_base_query_path+'badges')
 df_badges_unique = df_badges.withColumnRenamed('id','badge_id').withColumnRenamed('name', 'badge_name').drop('time').distinct()
+df_badges_unique_sk = df_badges_unique.withColumn('sk_badges', concat(col('checkin_id'), col('badge_id')))
 
 # COMMAND ----------
 
-write_delta_table(df_badges_unique, 'badges', zone = 'sanctioned')
+display(df_badges_unique_sk)
+
+# COMMAND ----------
+
+write_delta_table(df_badges_unique_sk, 'badges', zone = 'sanctioned')
 
 # COMMAND ----------
 
@@ -63,11 +72,12 @@ df_brewery = spark.read\
           .format('delta')\
           .option('ignoreChanges', True)\
           .load(untappd_base_query_path+'brewery')
-df_brewery_unique = df_beer.withColumnRenamed('id','brewery_id').distinct()
+df_brewery_unique = df_brewery.withColumnRenamed('id','brewery_id').distinct()
+df_brewery_unique_agg = df_brewery_unique.groupby("brewery_id", "name", "active", "label", "page_url", "slug", "type", "country_name", "city", "state", "contact_facebook", "contact_instagram", "contact_twitter", "contact_url").agg(avg("location_lat"), avg("location_lng")).withColumnRenamed('avg(location_lat)','location_lat').withColumnRenamed('avg(location_lng)','location_lng')
 
 # COMMAND ----------
 
-write_delta_table(df_brewery_unique, 'brewery', zone = 'sanctioned')
+write_delta_table(df_brewery_unique_agg, 'brewery', zone = 'sanctioned')
 
 # COMMAND ----------
 
@@ -109,11 +119,11 @@ df_media_unique = df_media.withColumnRenamed('id','media_id').distinct()
 
 # COMMAND ----------
 
-write_delta_table(df_media_unique, 'media', zone = 'sanctioned')
+write_delta_table(df_media_unique, 'media_test', zone = 'sanctioned')
 
 # COMMAND ----------
 
-register_delta_table('media', zone = 'sanctioned')
+register_delta_table('media_test', zone = 'sanctioned')
 
 # COMMAND ----------
 
@@ -130,7 +140,7 @@ df_source_unique = df_source.withColumnRenamed('id','source_id').distinct()
 
 # COMMAND ----------
 
-write_delta_table(df_brewery_unique, 'source', zone = 'sanctioned')
+write_delta_table(df_source_unique, 'source', zone = 'sanctioned')
 
 # COMMAND ----------
 
@@ -190,11 +200,12 @@ df_facts = spark.read\
           .format('delta')\
           .option('ignoreChanges', True)\
           .load(untappd_base_query_path+'facts')
-df_facts_unique = df_facts.withColumnRenamed('brewery.brewery_id','brewery_id').distinct()
+df_facts_unique = df_facts.withColumnRenamed('brewery.brewery_id','brewery_id').withColumnRenamed('beer_bid','beer_id').distinct()
+df_facts_unique_sk = df_facts_unique.withColumn('sk_beers', concat(col('checkin_id'), col('beer_id'))).withColumn('sk_brewery', concat(col('checkin_id'), col('brewery_id')))
 
 # COMMAND ----------
 
-write_delta_table(df_facts_unique, 'facts', zone = 'sanctioned')
+write_delta_table(df_facts_unique_sk, 'facts', zone = 'sanctioned')
 
 # COMMAND ----------
 
@@ -211,11 +222,12 @@ df_facts_beer = spark.read\
           .format('delta')\
           .option('ignoreChanges', True)\
           .load(untappd_base_query_path+'fact_beer')
-df_facts_beer_unique = df_facts_beer.distinct()
+df_facts_beer_unique = df_facts_beer.withColumnRenamed('beer_bid','beer_id').distinct()
+df_facts_beer_unique_sk = df_facts_beer_unique.withColumn('sk_beers', concat(col('checkin_id'), col('beer_id')))
 
 # COMMAND ----------
 
-write_delta_table(df_facts_beer_unique, 'fact_beer', zone = 'sanctioned')
+write_delta_table(df_facts_beer_unique_sk, 'fact_beer', zone = 'sanctioned')
 
 # COMMAND ----------
 
@@ -232,11 +244,12 @@ df_facts_brewery = spark.read\
           .format('delta')\
           .option('ignoreChanges', True)\
           .load(untappd_base_query_path+'fact_brewery')
-df_facts_brewery_unique = df_facts_brewery.distinct()
+df_facts_brewery_unique = df_facts_brewery.withColumnRenamed('brewery_bid','brewery_id').distinct()
+df_facts_brewery_unique_sk = df_facts_brewery_unique.withColumn('sk_brewery', concat(col('checkin_id'), col('brewery_id')))
 
 # COMMAND ----------
 
-write_delta_table(df_facts_brewery_unique, 'fact_brewery', zone = 'sanctioned')
+write_delta_table(df_facts_brewery_unique_sk, 'fact_brewery', zone = 'sanctioned')
 
 # COMMAND ----------
 
@@ -253,11 +266,12 @@ df_facts_badges = spark.read\
           .format('delta')\
           .option('ignoreChanges', True)\
           .load(untappd_base_query_path+'fact_badges')
-df_facts_badges_unique = df_facts_badges.distinct('checkin')
+df_facts_badges_unique = df_facts_badges.distinct()
+df_facts_badges_unique_sk = df_facts_badges_unique.withColumn('sk_badges', concat(col('checkin_id'), col('badge_id')))
 
 # COMMAND ----------
 
-write_delta_table(df_facts_badges_unique, 'fact_badges', zone = 'sanctioned')
+write_delta_table(df_facts_badges_unique_sk, 'fact_badges', zone = 'sanctioned')
 
 # COMMAND ----------
 
@@ -274,11 +288,16 @@ df_fact_comments = spark.read\
           .format('delta')\
           .option('ignoreChanges', True)\
           .load(untappd_base_query_path+'fact_comments')
-df_fact_comments_unique = df_fact_comments.distinct()
+df_fact_comments_unique = df_fact_comments.withColumnRenamed('items.comment_id','comment_id').distinct()
+df_fact_comments_unique_sk = df_fact_comments_unique.withColumn('sk_comments', concat(col('checkin_id'), col('comment_id')))
 
 # COMMAND ----------
 
-write_delta_table(df_fact_comments_unique, 'fact_comments', zone = 'sanctioned')
+display(df_fact_comments_unique_sk)
+
+# COMMAND ----------
+
+write_delta_table(df_fact_comments_unique_sk, 'fact_comments', zone = 'sanctioned')
 
 # COMMAND ----------
 
@@ -294,8 +313,8 @@ register_delta_table('fact_comments', zone = 'sanctioned')
 df_fact_media = spark.read\
           .format('delta')\
           .option('ignoreChanges', True)\
-          .load(untappd_base_query_path+'fact_badges')
-df_fact_media_unique = df_fact_media.distinct()
+          .load(untappd_base_query_path+'fact_media')
+df_fact_media_unique = df_fact_media.withColumnRenamed('photo_id','media_id').distinct()
 
 # COMMAND ----------
 
@@ -316,7 +335,7 @@ df_facts_toasts = spark.read\
           .format('delta')\
           .option('ignoreChanges', True)\
           .load(untappd_base_query_path+'fact_toasts')
-df_facts_toasts_unique = df_facts_toasts.distinct()
+df_facts_toasts_unique = df_facts_toasts.withColumnRenamed('like_id','toast_id').withColumn('sk_toasts', concat(col('checkin_id'), col('toast_id'))).distinct()
 
 # COMMAND ----------
 
@@ -337,7 +356,7 @@ df_fact_venue = spark.read\
           .format('delta')\
           .option('ignoreChanges', True)\
           .load(untappd_base_query_path+'fact_venue')
-df_fact_venue_unique = df_fact_venue.distinct()
+df_fact_venue_unique = df_fact_venue.withColumnRenamed('venue.venue_id','venue_id').distinct()
 
 # COMMAND ----------
 
