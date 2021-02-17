@@ -103,11 +103,58 @@ df = spark.read.schema(schema).json(untappd_raw_path)
 
 # COMMAND ----------
 
-df.show()
+# df.show()
 
 # COMMAND ----------
 
 df.write.format('delta').mode("append").save(untappd_raw_delta_path)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Cognitive Services Ingestion
+
+# COMMAND ----------
+
+from mmlspark.cognitive import *
+from pyspark.ml import PipelineModel
+from pyspark.sql.functions import col, udf
+from pyspark.ml.feature import SQLTransformer
+import os
+
+#put your service keys here
+TEXT_API_KEY          = cognitive_key
+# VISION_API_KEY        = os.environ["VISION_API_KEY"]
+# BING_IMAGE_SEARCH_KEY = os.environ["BING_IMAGE_SEARCH_KEY"]
+
+# COMMAND ----------
+
+sentimentTransformer = TextSentiment()\
+    .setTextCol("checkin_comment")\
+    .setUrl("https://{}.api.cognitive.microsoft.com/text/analytics/v3.0/sentiment".format(cognitive_location))\
+    .setSubscriptionKey(TEXT_API_KEY)\
+    .setOutputCol("sentiment")
+
+#Extract the sentiment score from the API response body
+# unneeded when doing raw capture
+# getSentiment = SQLTransformer(statement="SELECT *, sentiment[0].sentiment as sentimentLabel FROM __THIS__")
+
+# COMMAND ----------
+
+commentSentimentAnalysis = PipelineModel(stages=[
+  sentimentTransformer])
+
+df_sentiment = commentSentimentAnalysis.transform(df.select(df.checkin_comment, df.checkin_id)).drop(col('checkin_comment'))
+
+# COMMAND ----------
+
+sentiment_raw_path = base_path+'raw/sentiment/{}/{}/{}/untappd.json'.format(date.year,date.month,date.day)
+sentiment_raw_delta_path = base_path+'raw/sentiment/delta'
+sentiment_query_path =base_path+'query/sentiment'
+
+# COMMAND ----------
+
+df_sentiment.write.format('delta').mode("append").save(sentiment_raw_delta_path)
 
 # COMMAND ----------
 
