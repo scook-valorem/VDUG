@@ -2,8 +2,7 @@
 # MAGIC %md
 # MAGIC # TODO
 # MAGIC #### clean up flattening logic
-# MAGIC #### ensure beer table is deduped
-# MAGIC #### ensure watermark is working
+# MAGIC #### Remove Venue from fact table
 
 # COMMAND ----------
 
@@ -20,7 +19,7 @@
 
 # COMMAND ----------
 
-from pyspark.sql.functions import col, explode, when, split, to_timestamp
+from pyspark.sql.functions import col, explode, when, split, to_timestamp, size
 
 # COMMAND ----------
 
@@ -414,6 +413,51 @@ write_delta_table(df_venue_facts,'fact_venue')
 # COMMAND ----------
 
 # register_delta_table('fact_venue')
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Cognitive Services
+# MAGIC Ingest sentiment table from raw and integrate into delta layer
+
+# COMMAND ----------
+
+sentiment_raw_path = base_path+'raw/sentiment/{}/{}/{}/untappd.json'.format(date.year,date.month,date.day)
+sentiment_raw_delta_path = base_path+'raw/sentiment/delta'
+sentiment_query_path =base_path+'query/sentiment'
+
+# COMMAND ----------
+
+df_sentiment_raw = spark.readStream.format('delta').option('ignoreChanges', True).load(sentiment_raw_delta_path)
+
+# COMMAND ----------
+
+df_sentiment_raw_flat = df_sentiment_raw.withColumn('sentiment',col('sentiment')[0]).withColumn('statistics', col('sentiment').statistics).withColumn('documentScores', col('sentiment').documentScores).withColumn('documentScores', col('sentiment').documentScores).withColumn('warnings', col('sentiment').warnings).withColumn('sentiment', col('sentiment').sentiment)
+
+# COMMAND ----------
+
+write_delta_table(df_sentiment_raw_flat,'sentiment')
+
+# COMMAND ----------
+
+# register_delta_table('Sentiment')
+
+# COMMAND ----------
+
+df_sentiment_raw_sentences_flat = df_sentiment_raw.withColumn('sentences', col('sentiment').sentences).select(col('sentences'), col('checkin_id')).withColumn('sizes', size(col('sentences'))).where(col('sizes') > 0).select(explode(col('sentences')).alias('sentences_exploded'), col('checkin_id')).select(explode(col('sentences_exploded')).alias('sentences_exploded'), col('checkin_id')).withColumn('text', col('sentences_exploded').text).withColumn('sentiment', col('sentences_exploded').sentiment).withColumn('confidenceScores', col('sentences_exploded').confidenceScores).withColumn('offset', col('sentences_exploded').offset).withColumn('length', col('sentences_exploded').length).withColumn('confidence_positive', col('confidenceScores').positive).withColumn('confidence_neutral', col('confidenceScores').neutral).withColumn('confidence_negative', col('confidenceScores').negative).drop(col('sentences_exploded')).drop(col('confidenceScores'))
+
+# COMMAND ----------
+
+write_delta_table(df_sentiment_raw_sentences_flat,'sentiment_sentences')
+
+# COMMAND ----------
+
+# register_delta_table('sentiment_sentences')
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC DROP TABLE Sentiment
 
 # COMMAND ----------
 
