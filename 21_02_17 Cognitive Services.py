@@ -43,3 +43,25 @@ display(celebrityQuoteAnalysis.transform(spark.table('facts')))
 
 # COMMAND ----------
 
+keyPhrasesTransformer = TextSentiment()\
+    .setTextCol("description")\
+    .setUrl("https://{}.api.cognitive.microsoft.com/text/analytics/v3.0/keyPhrases".format(cognitive_location))\
+    .setSubscriptionKey(TEXT_API_KEY)\
+    .setOutputCol("keyPhrases")
+
+#Extract the sentiment score from the API response body
+# getSentiment = SQLTransformer(statement="SELECT *, sentiment[0].sentiment as sentimentLabel FROM __THIS__")
+
+# COMMAND ----------
+
+keyPhrasesAnalysis = PipelineModel(stages=[
+  keyPhrasesTransformer])
+
+display(keyPhrasesAnalysis.transform(spark.table('badges')))
+
+# COMMAND ----------
+
+display(spark.table('beer'))
+
+# COMMAND ----------
+

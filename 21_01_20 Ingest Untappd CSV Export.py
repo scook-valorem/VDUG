@@ -23,7 +23,7 @@ dbutils.fs.ls('mnt/default/untappd_exports/')
 
 # COMMAND ----------
 
-df = spark.read.option('header', True).csv('dbfs:/mnt/default/untappd_exports/untapped_20_12_16.csv')
+df = spark.read.option('header', True).csv('dbfs:/mnt/default/untappd_exports/untappd_export_21_01_20')
 
 # COMMAND ----------
 

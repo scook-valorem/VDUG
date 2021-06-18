@@ -146,7 +146,7 @@ create_register_delta_table(df_user_flat_clean,'user', untappd_base_query_path+'
 
 # COMMAND ----------
 
-df_badges = df.select(col('badges.count').alias('badge_count'), explode(col('badges.items')).alias('items'), col('badges.retro_status').alias('retro_status'))
+df_badges = df.select(col('badges.cACount').alias('badge_count'), explode(col('badges.items')).alias('items'), col('badges.retro_status').alias('retro_status'))
 df_badges_flat = flatten_df(df_badges)
 df_badges_flat_clean = clean_flat_column_names(df_badges_flat,'items')
 

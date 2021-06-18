@@ -67,3 +67,7 @@ dbutils.fs.ls(base_path)
 
 # COMMAND ----------
 
+dbutils.fs.ls('/databricks-datasets/')
+
+# COMMAND ----------
+

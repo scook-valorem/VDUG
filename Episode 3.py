@@ -33,7 +33,7 @@ df = spark.table('untappd')
 
 from pyspark.sql.functions import explode, when
 df_beer_flattened = flatten_df(df.select(df.beer)).withColumnRenamed('beer_beer_abv','abv').withColumnRenamed('beer_beer_active','active').withColumnRenamed('beer_beer_name','name').withColumnRenamed('beer_beer_slug','slug').withColumnRenamed('beer_beer_style','style').withColumnRenamed('beer_beer_bid','id').withColumnRenamed('beer_has_had','has_had').withColumnRenamed('beer_beer_label','label')
-df_beer_flattened_cleaned = df_beer_flattened.withColumn('active_bool',when(df_beer_flattened.active > 0 , True).otherwise(False)).drop(f)
+df_beer_flattened_cleaned = df_beer_flattened.withColumn('active_bool',when(df_beer_flattened.active > 0 , True).otherwise(False)).drop('active').withColumnRenamed('active_bool','active')
 
 # COMMAND ----------
 
@@ -70,7 +70,7 @@ create_register_delta_table(df_brewery_flattened, 'brewery', untappd_base_query_
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### TODO: Comments
+# MAGIC ### Comments
 
 # COMMAND ----------
 
@@ -82,7 +82,20 @@ create_register_delta_table(df_brewery_flattened, 'brewery', untappd_base_query_
 # COMMAND ----------
 
 from pyspark.sql.functions import explode, when
-df_comments = df.select(df.comments.count, explode(df.comments.items), df.comments.total_count)
+df_comments = df.select(df.comments.count.alias('comments_count'), explode(df.comments.items), df.comments.total_count.alias('total_count'), df.checkin_id)
+print(df_comments.columns)
+
+# COMMAND ----------
+
+for col in df_comments_flattened.columns:
+  splits = col.split('col_')
+  name = splits[len(splits) - 1]
+  df_comments_flattened = df_comments_flattened.withColumnRenamed(col,name)
+display(df_comments_flattened)
+
+# COMMAND ----------
+
+create_register_delta_table(df_comments_flattened, 'comments', untappd_base_query_path+'comments', True)
 
 # COMMAND ----------
 
@@ -118,7 +131,7 @@ create_register_delta_table(df_source_flattened, 'source', untappd_base_query_pa
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### User
+# MAGIC ### User (Fixed in [Episode 4](https://adb-2840934607355364.4.azuredatabricks.net/?o=2840934607355364#notebook/350310534036549/command/350310534036556))
 
 # COMMAND ----------
 
