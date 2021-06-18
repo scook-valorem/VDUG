@@ -51,7 +51,7 @@ write_delta_table(df = df, name = 'untappd')
 
 # COMMAND ----------
 
-register_delta_table(name = 'untappd')
+# register_delta_table(name = 'untappd')
 
 # COMMAND ----------
 
@@ -432,7 +432,7 @@ df_sentiment_raw = spark.readStream.format('delta').option('ignoreChanges', True
 
 # COMMAND ----------
 
-from pyspark.sql.functions import col
+df_tmp = df_sentiment_raw
 
 # COMMAND ----------
 
@@ -457,6 +457,11 @@ write_delta_table(df_sentiment_raw_sentences_flat,'sentiment_sentences')
 # COMMAND ----------
 
 # register_delta_table('sentiment_sentences')
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC DROP TABLE Sentiment
 
 # COMMAND ----------
 

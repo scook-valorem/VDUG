@@ -2,7 +2,8 @@
 # MAGIC %md
 # MAGIC # TODO
 # MAGIC #### clean up flattening logic
-# MAGIC #### Remove Venue from fact table
+# MAGIC #### ensure beer table is deduped
+# MAGIC #### ensure watermark is working
 
 # COMMAND ----------
 
@@ -19,7 +20,7 @@
 
 # COMMAND ----------
 
-from pyspark.sql.functions import col, explode, when, split, to_timestamp, size
+from pyspark.sql.functions import col, explode, when, split, to_timestamp
 
 # COMMAND ----------
 
@@ -51,7 +52,7 @@ write_delta_table(df = df, name = 'untappd')
 
 # COMMAND ----------
 
-register_delta_table(name = 'untappd')
+# register_delta_table(name = 'untappd')
 
 # COMMAND ----------
 
@@ -70,7 +71,35 @@ df_toasts_flat_clean = clean_flat_column_names(df_toasts_flat,'items')
 
 # COMMAND ----------
 
-write_delta_table(df_toasts_flat_clean,'toasts')
+# write_delta_table(df_toasts_flat_clean,'toasts')
+df_toasts_tmp = df_toasts_flat_clean
+name = 'toasts'
+zone = 'query'
+if zone == 'query':
+  print('writing stream to query zone')
+  df_toasts_tmp.writeStream.format('delta').option('path',  '{}{}'.format(untappd_base_query_path,name)).option('checkpointLocation', untappd_base_query_path+'{}/checkpoints'.format(name)).outputMode("append").trigger(once=True).start()
+elif zone == 'sanctioned':
+  # NOTE: All sanctioned zone processing is done in batch
+  print('writing batch to sanctioned zone')
+  df_toasts_tmp.write.format('delta').option('checkpointLocation', untappd_base_sanctioned_path+'{}/checkpoints'.format(name)).option('mergeSchema', True).mode("overwrite").save('{}{}'.format(untappd_base_sanctioned_path,name))
+else:
+  print("invalid zone option")
+if zone == 'query':
+    spark.sql(
+    '''
+    CREATE TABLE IF NOT EXISTS {}
+    USING DELTA
+    LOCATION '{}'
+    '''.format(name, '{}{}'.format(untappd_base_query_path,name))
+    )
+elif zone == 'sanctioned':
+  spark.sql(
+  '''
+  CREATE TABLE IF NOT EXISTS {}
+  USING DELTA
+  LOCATION '{}'
+  '''.format(name, '{}{}'.format(untappd_base_sanctioned_path,name))
+  )
 
 # COMMAND ----------
 
@@ -83,18 +112,55 @@ write_delta_table(df_toasts_flat_clean,'toasts')
 
 # COMMAND ----------
 
-# df_venue_flat = flatten_df(df.select(df.venue))
-# for col_name in df_venue_flat.columns:
-#   splits = col_name.split('venue_')
-#   name = splits[len(splits) - 1]
-#   df_venue_flat = df_venue_flat.withColumnRenamed(col_name,name)
-# df_venue_flat_exploded = df_venue_flat.withColumn('categories_items', explode(df_venue_flat.categories_items))
-# df_venue_flat_exploded = df_venue_flat_exploded.withColumn('category_id', df_venue_flat_exploded.categories_items.category_id).withColumn('category_key', df_venue_flat_exploded.categories_items.category_key).withColumn('category_name', df_venue_flat_exploded.categories_items.category_name).withColumn('is_primary', df_venue_flat_exploded.categories_items.is_primary).drop(df_venue_flat_exploded.categories_items).withColumnRenamed('id', 'venue_id')
-# # register_delta_table('venues')
+df_venue_flat = flatten_df(df.select(df.venue))
+for col_name in df_venue_flat.columns:
+  splits = col_name.split('venue_')
+  name = splits[len(splits) - 1]
+  df_venue_flat = df_venue_flat.withColumnRenamed(col_name,name)
+df_venue_flat_exploded = df_venue_flat.withColumn('categories_items', explode(df_venue_flat.categories_items))
+df_venue_flat_exploded = df_venue_flat_exploded.withColumn('category_id', df_venue_flat_exploded.categories_items.category_id).withColumn('category_key', df_venue_flat_exploded.categories_items.category_key).withColumn('category_name', df_venue_flat_exploded.categories_items.category_name).withColumn('is_primary', df_venue_flat_exploded.categories_items.is_primary).drop(df_venue_flat_exploded.categories_items).withColumnRenamed('id', 'venue_id')
+# write_delta_table(df_venue_flat_exploded,'venues')
+# register_delta_table('venues')
 
 # COMMAND ----------
 
-# write_delta_table(df_venue_flat_exploded,'venues')
+# write_delta_table(df_toasts_flat_clean,'toasts')
+df_venues_tmp = df_venue_flat_exploded
+name = 'venues'
+zone = 'query'
+if zone == 'query':
+  print('writing stream to query zone')
+  df_venues_tmp.writeStream.format('delta').option('path',  '{}{}'.format(untappd_base_query_path,name)).option('checkpointLocation', untappd_base_query_path+'{}/checkpoints'.format(name)).outputMode("append").trigger(once=True).start()
+elif zone == 'sanctioned':
+  # NOTE: All sanctioned zone processing is done in batch
+  print('writing batch to sanctioned zone')
+  df_venues_tmp.write.format('delta').option('checkpointLocation', untappd_base_sanctioned_path+'{}/checkpoints'.format(name)).option('mergeSchema', True).mode("overwrite").save('{}{}'.format(untappd_base_sanctioned_path,name))
+else:
+  print("invalid zone option")
+if zone == 'query':
+    spark.sql(
+    '''
+    CREATE TABLE IF NOT EXISTS {}
+    USING DELTA
+    LOCATION '{}'
+    '''.format(name, '{}{}'.format(untappd_base_query_path,name))
+    )
+elif zone == 'sanctioned':
+  spark.sql(
+  '''
+  CREATE TABLE IF NOT EXISTS {}
+  USING DELTA
+  LOCATION '{}'
+  '''.format(name, '{}{}'.format(untappd_base_sanctioned_path,name))
+  )
+
+# COMMAND ----------
+
+df_venues_tmp.writeStream.format('delta').option('path',  '{}{}'.format(untappd_base_query_path,name)).option('checkpointLocation', untappd_base_query_path+'{}/checkpoints'.format(name)).outputMode("append").trigger(once=True).start()
+
+# COMMAND ----------
+
+df_venues_tmp.writeStream.option('path',  '{}{}_debug'.format(untappd_base_query_path,name)).option('checkpointLocation', untappd_base_query_path+'{}/checkpoints'.format(name)).trigger(once=True).start()
 
 # COMMAND ----------
 
@@ -413,50 +479,6 @@ write_delta_table(df_venue_facts,'fact_venue')
 # COMMAND ----------
 
 # register_delta_table('fact_venue')
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Cognitive Services
-# MAGIC Ingest sentiment table from raw and integrate into delta layer
-
-# COMMAND ----------
-
-sentiment_raw_path = base_path+'raw/sentiment/{}/{}/{}/untappd.json'.format(date.year,date.month,date.day)
-sentiment_raw_delta_path = base_path+'raw/sentiment/delta'
-sentiment_query_path =base_path+'query/sentiment'
-
-# COMMAND ----------
-
-df_sentiment_raw = spark.readStream.format('delta').option('ignoreChanges', True).load(sentiment_raw_delta_path)
-
-# COMMAND ----------
-
-from pyspark.sql.functions import col
-
-# COMMAND ----------
-
-df_sentiment_raw_flat = df_sentiment_raw.withColumn('sentiment',col('sentiment')[0]).withColumn('statistics', col('sentiment').statistics).withColumn('documentScores', col('sentiment').documentScores).withColumn('documentScores', col('sentiment').documentScores).withColumn('warnings', col('sentiment').warnings).withColumn('sentiment', col('sentiment').sentiment)
-
-# COMMAND ----------
-
-write_delta_table(df_sentiment_raw_flat,'sentiment')
-
-# COMMAND ----------
-
-# register_delta_table('Sentiment')
-
-# COMMAND ----------
-
-df_sentiment_raw_sentences_flat = df_sentiment_raw.withColumn('sentences', col('sentiment').sentences).select(col('sentences'), col('checkin_id')).withColumn('sizes', size(col('sentences'))).where(col('sizes') > 0).select(explode(col('sentences')).alias('sentences_exploded'), col('checkin_id')).select(explode(col('sentences_exploded')).alias('sentences_exploded'), col('checkin_id')).withColumn('text', col('sentences_exploded').text).withColumn('sentiment', col('sentences_exploded').sentiment).withColumn('confidenceScores', col('sentences_exploded').confidenceScores).withColumn('offset', col('sentences_exploded').offset).withColumn('length', col('sentences_exploded').length).withColumn('confidence_positive', col('confidenceScores').positive).withColumn('confidence_neutral', col('confidenceScores').neutral).withColumn('confidence_negative', col('confidenceScores').negative).drop(col('sentences_exploded')).drop(col('confidenceScores'))
-
-# COMMAND ----------
-
-write_delta_table(df_sentiment_raw_sentences_flat,'sentiment_sentences')
-
-# COMMAND ----------
-
-# register_delta_table('sentiment_sentences')
 
 # COMMAND ----------
 
